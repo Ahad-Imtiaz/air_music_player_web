@@ -1,8 +1,9 @@
-import 'package:air_music_player_web/widgets/glowing_3d_button.dart';
 import 'package:flutter/material.dart';
 import 'package:just_audio/just_audio.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/foundation.dart'; // for kIsWeb
+import 'widgets/glowing_button.dart';
+import 'widgets/glowing_3d_button.dart';
 
 void main() {
   runApp(const MyApp());
@@ -30,6 +31,8 @@ class MyApp extends StatelessWidget {
           thumbColor: Colors.deepPurpleAccent,
           overlayColor: Colors.deepPurpleAccent.withOpacity(0.2),
           trackHeight: 4,
+          thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 12),
+          overlayShape: const RoundSliderOverlayShape(overlayRadius: 24),
         ),
         elevatedButtonTheme: ElevatedButtonThemeData(
           style: ElevatedButton.styleFrom(
@@ -63,7 +66,7 @@ class _AudioPlayerPageState extends State<AudioPlayerPage> {
   bool _isPlaying = false;
   String _songName = "No song loaded";
 
-  double? _dragValue; // temporary slider value
+  double? _dragValue;
 
   @override
   void initState() {
@@ -106,9 +109,7 @@ class _AudioPlayerPageState extends State<AudioPlayerPage> {
         await _player.setAudioSource(
           AudioSource.uri(Uri.dataFromBytes(bytes, mimeType: 'audio/mpeg')),
         );
-        setState(() {
-          _songName = name;
-        });
+        setState(() => _songName = name);
       }
     } else {
       FilePickerResult? result = await FilePicker.platform.pickFiles(type: FileType.audio);
@@ -116,9 +117,7 @@ class _AudioPlayerPageState extends State<AudioPlayerPage> {
         final path = result.files.single.path!;
         final name = result.files.single.name;
         await _player.setFilePath(path);
-        setState(() {
-          _songName = name;
-        });
+        setState(() => _songName = name);
       }
     }
   }
@@ -147,25 +146,54 @@ class _AudioPlayerPageState extends State<AudioPlayerPage> {
                 text: "Load Audio",
               ),
               const SizedBox(height: 20),
+              GlowingWidget(
+                onPressed: _loadAudio,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                  decoration: BoxDecoration(
+                    gradient: const LinearGradient(
+                      colors: [Color(0xFF8E2DE2), Color(0xFF4A00E0)],
+                    ),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: const Text(
+                    "Load Audio",
+                    style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 20),
               Text(
                 _songName,
                 style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
               ),
               const SizedBox(height: 30),
-              Slider(
-                value: pos.clamp(0, max),
-                max: max > 0 ? max : 1,
-                onChanged: (value) {
-                  setState(() {
-                    _dragValue = value;
-                  });
-                },
-                onChangeEnd: (value) {
-                  _player.seek(Duration(milliseconds: value.toInt()));
-                  setState(() {
-                    _dragValue = null;
-                  });
-                },
+              MouseRegion(
+                cursor: SystemMouseCursors.click,
+                child: SliderTheme(
+                  data: SliderTheme.of(context).copyWith(
+                    activeTrackColor: Colors.deepPurpleAccent,
+                    inactiveTrackColor: Colors.white24,
+                    thumbColor: Colors.deepPurpleAccent,
+                    overlayColor: Colors.deepPurpleAccent.withOpacity(0.3),
+                    trackHeight: 4,
+                  ),
+                  child: Slider(
+                    value: pos.clamp(0, max),
+                    max: max > 0 ? max : 1,
+                    onChanged: (value) {
+                      setState(() {
+                        _dragValue = value;
+                      });
+                    },
+                    onChangeEnd: (value) {
+                      _player.seek(Duration(milliseconds: value.toInt()));
+                      setState(() {
+                        _dragValue = null;
+                      });
+                    },
+                  ),
+                ),
               ),
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -175,16 +203,22 @@ class _AudioPlayerPageState extends State<AudioPlayerPage> {
                 ],
               ),
               const SizedBox(height: 20),
-              IconButton(
-                iconSize: 60,
-                icon: Icon(_isPlaying ? Icons.pause_circle : Icons.play_circle),
+              GlowingWidget(
+                borderRadius: 100,
                 onPressed: () {
-                  if (_isPlaying) {
-                    _player.pause();
-                  } else {
-                    _player.play();
+                  if (_duration > Duration.zero) {
+                    if (_isPlaying) {
+                      _player.pause();
+                    } else {
+                      _player.play();
+                    }
                   }
                 },
+                child: Icon(
+                  _isPlaying ? Icons.pause_circle : Icons.play_circle,
+                  size: 60,
+                  color: Colors.deepPurpleAccent,
+                ),
               ),
             ],
           ),
