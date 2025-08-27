@@ -1,9 +1,11 @@
+import 'package:air_music_player_web/widgets/slider/wave_slider.dart';
 import 'package:flutter/material.dart';
 import 'package:just_audio/just_audio.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/foundation.dart'; // for kIsWeb
 import 'widgets/glowing_button.dart';
 import 'widgets/glowing_3d_button.dart';
+import 'dart:html' as html;
 
 void main() {
   runApp(const MyApp());
@@ -64,6 +66,7 @@ class _AudioPlayerPageState extends State<AudioPlayerPage> {
   Duration _position = Duration.zero;
   Duration _duration = Duration.zero;
   bool _isPlaying = false;
+  bool _isRepeating = false;
   String _songName = "No song loaded";
 
   double? _dragValue;
@@ -72,10 +75,38 @@ class _AudioPlayerPageState extends State<AudioPlayerPage> {
   void initState() {
     super.initState();
 
-    _player.positionStream.listen((pos) {
+    // Only one positionStream listener
+    _player.positionStream.listen((pos) async {
       if (_dragValue == null) {
         setState(() {
           _position = pos;
+        });
+      }
+      // Seamless repeat: seek to start just before the end
+      if (_isRepeating &&
+          _duration > Duration.zero &&
+          (_duration.inMilliseconds - pos.inMilliseconds) <= 200 &&
+          _player.playing) {
+        await _player.seek(Duration.zero);
+        await _player.play();
+        setState(() {
+          _position = Duration.zero;
+          _dragValue = null;
+        });
+      }
+    });
+
+    // Listen for end of track when repeat is off
+    _player.playerStateStream.listen((state) async {
+      if (state.processingState == ProcessingState.completed && !_isRepeating) {
+        setState(() {
+          _isPlaying = false;
+          _dragValue = null;
+          _position = _duration; // Keep at end
+        });
+      } else if (state.playing != _isPlaying) {
+        setState(() {
+          _isPlaying = state.playing;
         });
       }
     });
@@ -83,12 +114,6 @@ class _AudioPlayerPageState extends State<AudioPlayerPage> {
     _player.durationStream.listen((dur) {
       setState(() {
         _duration = dur ?? Duration.zero;
-      });
-    });
-
-    _player.playerStateStream.listen((state) {
-      setState(() {
-        _isPlaying = state.playing;
       });
     });
   }
@@ -104,11 +129,15 @@ class _AudioPlayerPageState extends State<AudioPlayerPage> {
     if (kIsWeb) {
       FilePickerResult? result = await FilePicker.platform.pickFiles(type: FileType.audio);
       if (result != null && result.files.single.bytes != null) {
-        final bytes = result.files.single.bytes!;
         final name = result.files.single.name;
-        await _player.setAudioSource(
-          AudioSource.uri(Uri.dataFromBytes(bytes, mimeType: 'audio/mpeg')),
-        );
+        final bytes = result.files.single.bytes!;
+
+        // Create a blob URL
+        final blob = html.Blob([bytes]);
+        final url = html.Url.createObjectUrlFromBlob(blob);
+
+        await _player.setAudioSource(AudioSource.uri(Uri.parse(url)));
+
         setState(() => _songName = name);
       }
     } else {
@@ -130,8 +159,9 @@ class _AudioPlayerPageState extends State<AudioPlayerPage> {
 
   @override
   Widget build(BuildContext context) {
-    final max = _duration.inMilliseconds.toDouble();
-    final pos = _dragValue ?? _position.inMilliseconds.toDouble();
+    final audioDuration = _duration.inMilliseconds.toDouble().clamp(1, double.infinity);
+    final clampedPosition = _position > _duration ? _duration : _position;
+    final audioDurationPosition = (_dragValue ?? clampedPosition.inMilliseconds.toDouble()).clamp(0, audioDuration);
 
     return Scaffold(
       appBar: AppBar(title: const Text("Simple Audio Player")),
@@ -168,57 +198,68 @@ class _AudioPlayerPageState extends State<AudioPlayerPage> {
                 style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
               ),
               const SizedBox(height: 30),
-              MouseRegion(
-                cursor: SystemMouseCursors.click,
-                child: SliderTheme(
-                  data: SliderTheme.of(context).copyWith(
-                    activeTrackColor: Colors.deepPurpleAccent,
-                    inactiveTrackColor: Colors.white24,
-                    thumbColor: Colors.deepPurpleAccent,
-                    overlayColor: Colors.deepPurpleAccent.withOpacity(0.3),
-                    trackHeight: 4,
-                  ),
-                  child: Slider(
-                    value: pos.clamp(0, max),
-                    max: max > 0 ? max : 1,
-                    onChanged: (value) {
-                      setState(() {
-                        _dragValue = value;
-                      });
-                    },
-                    onChangeEnd: (value) {
-                      _player.seek(Duration(milliseconds: value.toInt()));
-                      setState(() {
-                        _dragValue = null;
-                      });
-                    },
-                  ),
-                ),
+              WaveSlider(
+                value: audioDuration > 0 ? audioDurationPosition / audioDuration : 0,
+                enabled: _duration > Duration.zero,
+                width: MediaQuery.of(context).size.width * 0.90,
+                color: Colors.deepPurpleAccent,
+                onChanged: (value) {
+                  setState(() {
+                    _dragValue = value * _duration.inMilliseconds;
+                  });
+                },
+                onChangeEnd: (value) {
+                  final newPos = Duration(milliseconds: (value * _duration.inMilliseconds).toInt());
+                  _player.seek(newPos);
+                  setState(() {
+                    _dragValue = null;
+                  });
+                },
               ),
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  Text(formatTime(_position)),
+                  Text(formatTime(clampedPosition)),
                   Text(formatTime(_duration)),
                 ],
               ),
               const SizedBox(height: 20),
-              GlowingWidget(
-                borderRadius: 100,
-                onPressed: () {
-                  if (_duration > Duration.zero) {
-                    if (_isPlaying) {
-                      _player.pause();
-                    } else {
-                      _player.play();
-                    }
-                  }
-                },
-                child: Icon(
-                  _isPlaying ? Icons.pause_circle : Icons.play_circle,
-                  size: 60,
-                  color: Colors.deepPurpleAccent,
-                ),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  GlowingWidget(
+                    borderRadius: 100,
+                    onPressed: () {
+                      if (_duration > Duration.zero) {
+                        if (_isPlaying) {
+                          _player.pause();
+                          setState(() => _isPlaying = false);
+                        } else {
+                          _player.play();
+                          setState(() => _isPlaying = true);
+                        }
+                      }
+                    },
+                    child: Icon(
+                      _isPlaying ? Icons.pause_circle : Icons.play_circle,
+                      size: 60,
+                      color: Colors.deepPurpleAccent,
+                    ),
+                  ),
+                  const SizedBox(width: 20),
+                  IconButton(
+                    iconSize: 40,
+                    icon: Icon(
+                      Icons.repeat,
+                      color: _isRepeating ? Colors.deepPurpleAccent : Colors.grey,
+                    ),
+                    onPressed: () {
+                      setState(() {
+                        _isRepeating = !_isRepeating;
+                      });
+                    },
+                  ),
+                ],
               ),
             ],
           ),
