@@ -62,27 +62,32 @@ class _WaveSliderState extends State<WaveSlider> with TickerProviderStateMixin {
   }
 
   void _updateWave() {
-    double damping = 0.9;
-    double tension = 0.1;
+    double damping = 0.92; // smoother, less abrupt
+    double tension = 0.08; // softer, less snappy
 
-    int thumbIndex = (_internalValue * (yOffsets.length - 1)).round();
-    int effectRange = 4;
+    // Use the same thumb position for both bulge and glow
+    final currentValue = _isAnimating && _slideAnimation != null ? _slideAnimation!.value : _internalValue;
+
+    int thumbIndex = (currentValue * (yOffsets.length - 1)).round();
+    int effectRange = 2;
+    const double maxBulge = 32.0; // maximum allowed bulge height
 
     for (int i = 0; i < yOffsets.length; i++) {
       double target = 0;
       double distance = (i - thumbIndex).abs().toDouble();
 
       if (distance <= effectRange) {
-        double falloff = cos((distance / effectRange) * (pi / 2));
-        double baseBulge = 25 * falloff;
-        double velocityOffset = _velocity.abs() * 1.5 * falloff;
+        double falloff = pow(cos((distance / effectRange) * (pi / 2)), 1.5).toDouble(); // softer edge
+        double baseBulge = maxBulge * falloff;
+        double velocityOffset = (_velocity.abs() * 1.2 * falloff).clamp(0, maxBulge * 0.7);
         target = baseBulge + velocityOffset;
+        if (target > maxBulge) target = maxBulge;
       }
 
       double force = (target - yOffsets[i]) * tension;
       yOffsets[i] += force;
       yOffsets[i] *= damping;
-      yOffsets[i] = max(0, yOffsets[i]);
+      yOffsets[i] = max(0, min(yOffsets[i], maxBulge));
     }
 
     _velocity *= 0.85;
@@ -175,6 +180,7 @@ class _WaveSliderState extends State<WaveSlider> with TickerProviderStateMixin {
             color: widget.enabled ? widget.color : Colors.grey.shade700,
             glow: _isInteracting ? 24 : 10,
             glowOpacity: _isInteracting ? 0.55 : 0.25,
+            neon: _isInteracting, // pass interaction state for neon
           ),
         ),
       ),
@@ -188,6 +194,7 @@ class _WaveSliderPainter extends CustomPainter {
   final Color color;
   final double glow;
   final double glowOpacity;
+  final bool neon;
 
   _WaveSliderPainter({
     required this.yOffsets,
@@ -195,6 +202,7 @@ class _WaveSliderPainter extends CustomPainter {
     required this.color,
     this.glow = 10,
     this.glowOpacity = 0.25,
+    this.neon = false,
   });
 
   @override
@@ -202,6 +210,11 @@ class _WaveSliderPainter extends CustomPainter {
     double centerY = size.height / 2;
     double dx = size.width / (yOffsets.length - 1);
 
+    // Use the same thumb position for both bulge and glow
+    final currentValue = value;
+    final thumbIndex = (currentValue * (yOffsets.length - 1)).round();
+
+    // Draw main wave
     Paint wavePaint = Paint()
       ..color = color
       ..style = PaintingStyle.stroke
@@ -220,14 +233,52 @@ class _WaveSliderPainter extends CustomPainter {
     }
     canvas.drawPath(path, wavePaint);
 
-    final thumbX = value * size.width;
-    final thumbY = centerY - yOffsets[(value * (yOffsets.length - 1)).round()];
+    // Draw constant glow near the thumb (a blurred segment of the wave)
+    const glowWidth = 12;
+    final glowStart = (thumbIndex - glowWidth ~/ 2).clamp(0, yOffsets.length - 1);
+    final glowEnd = (thumbIndex + glowWidth ~/ 2).clamp(0, yOffsets.length - 1);
+
+    if (glowEnd > glowStart) {
+      final glowPath = Path();
+      glowPath.moveTo(glowStart * dx, centerY - yOffsets[glowStart]);
+      for (int i = glowStart + 1; i <= glowEnd; i++) {
+        double x = i * dx;
+        double y = centerY - yOffsets[i];
+        double prevX = (i - 1) * dx;
+        double prevY = centerY - yOffsets[i - 1];
+        double mx = (prevX + x) / 2;
+        double my = (prevY + y) / 2;
+        glowPath.quadraticBezierTo(prevX, prevY, mx, my);
+      }
+      final Paint glowPaint = Paint()
+        ..color = color.withOpacity(0.95)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 8
+        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 16);
+      canvas.drawPath(glowPath, glowPaint);
+    }
 
     // Draw glow
+    final thumbX = currentValue * size.width;
+    final thumbY = centerY - yOffsets[thumbIndex];
+
+    // Neon glow effect when interacting
+    if (neon) {
+      final neonPaint = Paint()
+        ..color = const Color.fromARGB(255, 216, 2, 205).withOpacity(0.7)
+        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 32);
+      canvas.drawCircle(Offset(thumbX, thumbY), 32, neonPaint);
+
+      final neonPaint2 = Paint()
+        ..color = const Color.fromARGB(255, 230, 5, 238).withOpacity(0.5)
+        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 16);
+      canvas.drawCircle(Offset(thumbX, thumbY), 22, neonPaint2);
+    }
+
     final glowPaint = Paint()
-      ..color = color.withOpacity(glowOpacity)
-      ..maskFilter = MaskFilter.blur(BlurStyle.normal, glow);
-    canvas.drawCircle(Offset(thumbX, thumbY), 18, glowPaint);
+      ..color = color.withOpacity(glowOpacity * 1.7)
+      ..maskFilter = MaskFilter.blur(BlurStyle.normal, glow * 1.5);
+    canvas.drawCircle(Offset(thumbX, thumbY), 22, glowPaint);
 
     // Draw thumb
     Paint thumbPaint = Paint()..color = color.withOpacity(0.9);

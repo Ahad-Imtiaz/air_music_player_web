@@ -154,6 +154,11 @@ class _AudioPlayerPageState extends State<AudioPlayerPage> {
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
+              Text(
+                _songName,
+                style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+              ),
+              const SizedBox(height: 30),
               Glowing3DButton(
                 onPressed: _loadAudio,
                 text: "Load Audio",
@@ -169,18 +174,16 @@ class _AudioPlayerPageState extends State<AudioPlayerPage> {
                     ),
                     borderRadius: BorderRadius.circular(12),
                   ),
-                  child: const Text(
-                    "Load Audio",
-                    style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+                  width: MediaQuery.of(context).size.width * 0.90,
+                  child: const Center(
+                    child: Text(
+                      "Load Audio",
+                      style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+                    ),
                   ),
                 ),
               ),
               const SizedBox(height: 20),
-              Text(
-                _songName,
-                style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
-              ),
-              const SizedBox(height: 30),
               WaveSlider(
                 value: audioDuration > 0 ? audioDurationPosition / audioDuration : 0,
                 enabled: _duration > Duration.zero,
