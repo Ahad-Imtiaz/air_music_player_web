@@ -1,11 +1,11 @@
-import 'package:air_music_player_web/widgets/slider/wave_slider.dart';
 import 'package:flutter/material.dart';
+
 import 'package:just_audio/just_audio.dart';
-import 'package:file_picker/file_picker.dart';
-import 'package:flutter/foundation.dart'; // for kIsWeb
-import 'widgets/glowing_button.dart';
-import 'widgets/glowing_3d_button.dart';
-import 'dart:html' as html;
+
+import 'package:air_music_player_web/utils/audio_file_load/audio_loader.dart';
+import 'package:air_music_player_web/widgets/glowing_3d_button.dart';
+import 'package:air_music_player_web/widgets/glowing_button.dart';
+import 'package:air_music_player_web/widgets/slider/wave_slider.dart';
 
 void main() {
   runApp(const MyApp());
@@ -126,28 +126,11 @@ class _AudioPlayerPageState extends State<AudioPlayerPage> {
   }
 
   Future<void> _loadAudio() async {
-    if (kIsWeb) {
-      FilePickerResult? result = await FilePicker.platform.pickFiles(type: FileType.audio);
-      if (result != null && result.files.single.bytes != null) {
-        final name = result.files.single.name;
-        final bytes = result.files.single.bytes!;
-
-        // Create a blob URL
-        final blob = html.Blob([bytes]);
-        final url = html.Url.createObjectUrlFromBlob(blob);
-
-        await _player.setAudioSource(AudioSource.uri(Uri.parse(url)));
-
-        setState(() => _songName = name);
-      }
-    } else {
-      FilePickerResult? result = await FilePicker.platform.pickFiles(type: FileType.audio);
-      if (result != null && result.files.single.path != null) {
-        final path = result.files.single.path!;
-        final name = result.files.single.name;
-        await _player.setFilePath(path);
-        setState(() => _songName = name);
-      }
+    final result = await loadAudio(_player);
+    if (result != null) {
+      setState(() {
+        _songName = result['name'] as String;
+      });
     }
   }
 
@@ -224,42 +207,52 @@ class _AudioPlayerPageState extends State<AudioPlayerPage> {
                 ],
               ),
               const SizedBox(height: 20),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  GlowingWidget(
-                    borderRadius: 100,
-                    onPressed: () {
-                      if (_duration > Duration.zero) {
-                        if (_isPlaying) {
-                          _player.pause();
-                          setState(() => _isPlaying = false);
-                        } else {
-                          _player.play();
-                          setState(() => _isPlaying = true);
-                        }
-                      }
-                    },
-                    child: Icon(
-                      _isPlaying ? Icons.pause_circle : Icons.play_circle,
-                      size: 60,
-                      color: Colors.deepPurpleAccent,
+              // Center play/pause, move repeat to right (no overlap)
+              SizedBox(
+                height: 70,
+                width: 180, // Increased width to give space
+                child: Stack(
+                  alignment: Alignment.center,
+                  children: [
+                    Align(
+                      alignment: Alignment.center,
+                      child: GlowingWidget(
+                        borderRadius: 100,
+                        onPressed: () {
+                          if (_duration > Duration.zero) {
+                            if (_isPlaying) {
+                              _player.pause();
+                              setState(() => _isPlaying = false);
+                            } else {
+                              _player.play();
+                              setState(() => _isPlaying = true);
+                            }
+                          }
+                        },
+                        child: Icon(
+                          _isPlaying ? Icons.pause_circle : Icons.play_circle,
+                          size: 60,
+                          color: Colors.deepPurpleAccent,
+                        ),
+                      ),
                     ),
-                  ),
-                  const SizedBox(width: 20),
-                  IconButton(
-                    iconSize: 40,
-                    icon: Icon(
-                      Icons.repeat,
-                      color: _isRepeating ? Colors.deepPurpleAccent : Colors.grey,
+                    Align(
+                      alignment: Alignment.centerRight,
+                      child: IconButton(
+                        iconSize: 40,
+                        icon: Icon(
+                          Icons.repeat,
+                          color: _isRepeating ? Colors.deepPurpleAccent : Colors.grey,
+                        ),
+                        onPressed: () {
+                          setState(() {
+                            _isRepeating = !_isRepeating;
+                          });
+                        },
+                      ),
                     ),
-                    onPressed: () {
-                      setState(() {
-                        _isRepeating = !_isRepeating;
-                      });
-                    },
-                  ),
-                ],
+                  ],
+                ),
               ),
             ],
           ),

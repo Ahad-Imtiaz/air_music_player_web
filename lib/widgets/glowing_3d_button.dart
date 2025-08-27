@@ -65,7 +65,7 @@ class _Glowing3DButtonState extends State<Glowing3DButton> {
           duration: const Duration(milliseconds: 150),
           transform: Matrix4.identity()
             ..setEntry(3, 2, 0.001) // perspective
-            ..translate(0, _hovering ? -6 : 0)
+            ..translate(0.0, _hovering ? -6.0 : 0.0)
             ..rotateX(rotationX)
             ..rotateY(rotationY),
           transformAlignment: Alignment.center, // <-- center the rotation
